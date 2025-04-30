@@ -31,8 +31,14 @@ func main() {
 		// Send a string response to the client
 		return c.SendString("Teste")
 	})
-	app.Get("/todos", func(c fiber.Ctx) error {
-
+	app.Get("/api/todos/", func(c fiber.Ctx) error {
+		for i := range todos {
+			fmt.Println(i)
+		}
+		fmt.Println("******************")
+		for i, todo := range todos {
+			fmt.Print(i, todo)
+		}
 		return c.Status(200).JSON(todos)
 	})
 	//Create a Todo
@@ -47,7 +53,7 @@ func main() {
 			return c.Status(400).JSON(fiber.Map{"error": "Todo body is required"})
 		}
 
-		todo.ID = len(todos)
+		todo.ID = len(todos) + 1     // Start on 1
 		todos = append(todos, *todo) // Pointer to the value stored at the memory address of todo
 
 		return c.Status(201).JSON(todo)
@@ -61,6 +67,24 @@ func main() {
 			if fmt.Sprint(todo.ID) == id {
 				todos[i].Completed = !todos[i].Completed
 				return c.Status(200).JSON(todos[i])
+			}
+		}
+
+		return c.Status(404).JSON(fiber.Map{"error": "Todo not found"})
+	})
+
+	// Delete a To-Do
+	app.Delete("api/todos/:id", func(c fiber.Ctx) error {
+		id := c.Params("id")
+
+		// i is the position of array
+		// todo is the object
+		// todo.ID is the id of object
+		for i, todo := range todos {
+			if fmt.Sprint(todo.ID) == id {
+				// Update todos list with all data before and after todos[i]
+				todos = append(todos[:i], todos[i+1:]...)
+				return c.Status(200).JSON(fiber.Map{"sucess": "true"})
 			}
 		}
 
