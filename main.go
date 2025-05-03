@@ -33,6 +33,7 @@ func main() {
 	})
 
 	app.Get("/hello", func(c fiber.Ctx) error {
+		//Send a HTTP Status and a JSON File response to the client
 		return c.Status(200).JSON(fiber.Map{"msg": "hello postman"})
 	})
 
@@ -41,13 +42,16 @@ func main() {
 		return c.SendString("Teste")
 	})
 	app.Get("/api/todos/", func(c fiber.Ctx) error {
-		for i := range todos {
-			fmt.Println(i)
-		}
-		fmt.Println("******************")
-		for i, todo := range todos {
-			fmt.Print(i, todo)
-		}
+
+		/*
+			for i := range todos {
+				fmt.Println(i)
+			}
+			fmt.Println("******************")
+			for i, todo := range todos {
+				fmt.Print(i, todo)
+			}
+		*/
 		return c.Status(200).JSON(todos)
 	})
 	//Create a Todo
