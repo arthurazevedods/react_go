@@ -2,13 +2,16 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 
+	"github.com/arthurazevedods/react_go/config"
 	"github.com/joho/godotenv"
-	"go.mongodb.org/mongo-driver/v2/mongo"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type Todo struct {
@@ -16,49 +19,116 @@ type Todo struct {
 	Body      string `json:"body" bson:"body"`
 }
 
-func main() {
-	fmt.Println("Hello, World!")
-	var uri string
-	// Read .env file
-	err := godotenv.Load(".env")
+var mongoClient *mongo.Client
+
+func GetTodos(w http.ResponseWriter, r *http.Request) {
+	collection := mongoClient.Database("react_go").Collection("Todos")
+	curr, err := collection.Find(r.Context(), bson.D{})
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Printf("Failed to find documents: %v", err)
+		http.Error(w, "Failed to find documents", http.StatusInternalServerError)
+		return
 	}
-	if uri = os.Getenv("MONGODB_URI"); uri == "" {
-		log.Fatal("You must set your 'MONGODB_URI' environment variable.")
+	defer curr.Close(r.Context())
+
+	var todos []Todo
+	for curr.Next(r.Context()) {
+		var todo Todo
+		if err := curr.Decode(&todo); err != nil {
+			log.Printf("Failed to decode document: %v", err)
+			http.Error(w, "Failed to decode document", http.StatusInternalServerError)
+			return
+		}
+		todos = append(todos, todo)
 	}
 
-	// Use the SetServerAPIOptions() method to set the Stable API version to 1
-	serverAPI := options.ServerAPI(options.ServerAPIVersion1)
-	opts := options.Client().ApplyURI(uri).SetServerAPIOptions(serverAPI)
-	// Create a new client and connect to the server
-	client, err := mongo.Connect(opts)
+	if err := curr.Err(); err != nil {
+		log.Printf("Cursor error: %v", err)
+		http.Error(w, "Cursor error", http.StatusInternalServerError)
+		return
+	}
+
+	if len(todos) == 0 {
+		log.Println("No todos found in collection")
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(todos); err != nil {
+		log.Printf("Failed to encode response: %v", err)
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
+}
+
+func InsertMany(w http.ResponseWriter, r *http.Request) {
+	collection := mongoClient.Database("react_go").Collection("Todos")
+	var todos []Todo
+	if err := json.NewDecoder(r.Body).Decode(&todos); err != nil {
+		log.Printf("Failed to decode request body: %v", err)
+		http.Error(w, "Failed to decode request body", http.StatusBadRequest)
+		return
+	}
+
+	docs := make([]interface{}, len(todos))
+	for i, todo := range todos {
+		docs[i] = todo
+	}
+
+	result, err := collection.InsertMany(r.Context(), docs)
 	if err != nil {
-		panic(err)
+		log.Printf("Failed to insert documents: %v", err)
+		http.Error(w, "Failed to insert documents", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(result.InsertedIDs); err != nil {
+		log.Printf("Failed to encode response: %v", err)
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
+}
+
+func CheckCollection(w http.ResponseWriter, r *http.Request) {
+	count, err := mongoClient.Database("react_go").Collection("Todos").CountDocuments(r.Context(), bson.D{})
+	if err != nil {
+		log.Printf("Failed to count documents: %v", err)
+		http.Error(w, "Failed to count documents", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain")
+	fmt.Fprintf(w, "Total documents in collection: %d", count)
+}
+
+func main() {
+	// Carregar variáveis de ambiente
+	if err := godotenv.Load(".env"); err != nil {
+		log.Fatalf("Error loading .env file: %v", err)
+	}
+
+	// Inicializar cliente MongoDB usando config.ConnectDB()
+	var err error
+	mongoClient, err = config.ConnectDB()
+	if err != nil {
+		log.Fatalf("Failed to connect to MongoDB: %v", err)
 	}
 	defer func() {
-		if err = client.Disconnect(context.TODO()); err != nil {
-			panic(err)
+		if err := mongoClient.Disconnect(context.TODO()); err != nil {
+			log.Printf("Error disconnecting from MongoDB: %v", err)
 		}
 	}()
 
-	collection := client.Database("react_go").Collection("Todos")
-	Todos := []Todo{
-		{Completed: false, Body: "Buy groceries"},
-		{Completed: false, Body: "Go to the gym"},
-		{Completed: false, Body: "Read a book"},
-		{Completed: false, Body: "Learn Go"},
-		{Completed: false, Body: "Learn React"},
-		{Completed: false, Body: "Learn MongoDB"},
-		{Completed: false, Body: "Learn Docker"},
-		{Completed: false, Body: "Learn Kubernetes"},
-		{Completed: false, Body: "Learn GraphQL"},
-		{Completed: false, Body: "Learn TypeScript"},
-	}
-	result, err := collection.InsertMany(context.TODO(), Todos)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println("Inserted many documents: ", result.InsertedIDs)
+	// Configurar rotas
+	http.HandleFunc("/api", GetTodos)
+	http.HandleFunc("/api/insertMany", InsertMany)
+	http.HandleFunc("/api/check", CheckCollection)
 
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	log.Printf("Server running on port :%s", port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
