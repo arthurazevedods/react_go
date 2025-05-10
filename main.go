@@ -7,13 +7,11 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
-	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 type Todo struct {
-	ID        int    `json:"id" bson:"id"`
 	Completed bool   `json:"completed" bson:"completed"`
 	Body      string `json:"body" bson:"body"`
 }
@@ -44,10 +42,23 @@ func main() {
 		}
 	}()
 
-	var result bson.M
-	if err := client.Database("admin").RunCommand(context.TODO(), bson.D{{Key: "ping", Value: 1}}).Decode(&result); err != nil {
-		panic(err)
+	collection := client.Database("react_go").Collection("Todos")
+	Todos := []Todo{
+		{Completed: false, Body: "Buy groceries"},
+		{Completed: false, Body: "Go to the gym"},
+		{Completed: false, Body: "Read a book"},
+		{Completed: false, Body: "Learn Go"},
+		{Completed: false, Body: "Learn React"},
+		{Completed: false, Body: "Learn MongoDB"},
+		{Completed: false, Body: "Learn Docker"},
+		{Completed: false, Body: "Learn Kubernetes"},
+		{Completed: false, Body: "Learn GraphQL"},
+		{Completed: false, Body: "Learn TypeScript"},
 	}
-	fmt.Println("Pinged your deployment. You successfully connected to MongoDB!")
+	result, err := collection.InsertMany(context.TODO(), Todos)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("Inserted many documents: ", result.InsertedIDs)
 
 }
