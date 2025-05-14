@@ -48,6 +48,9 @@ func main() {
 	http.HandleFunc("/api/delete", func(w http.ResponseWriter, r *http.Request) {
 		handlers.Delete(mongoClient, w, r)
 	})
+	http.HandleFunc("/api/update", func(w http.ResponseWriter, r *http.Request) {
+		handlers.Update(mongoClient, w, r)
+	})
 
 	port := os.Getenv("PORT")
 	if port == "" {

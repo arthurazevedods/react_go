@@ -143,9 +143,6 @@ func Delete(mongoClient *mongo.Client, w http.ResponseWriter, r *http.Request) {
 
 	// Obter a coleção e deletar o documento
 	collection := mongoClient.Database("react_go").Collection("Todos")
-	log.Println("Deleting document with ID:", id)
-	log.Println("Filter:", filter)
-	log.Println("Context:", r.Context())
 	result := collection.FindOneAndDelete(r.Context(), filter)
 
 	// Verificar se houve erro ao deletar
@@ -174,4 +171,67 @@ func Delete(mongoClient *mongo.Client, w http.ResponseWriter, r *http.Request) {
 	// Logar e enviar resposta de sucesso
 	log.Printf("Deleted document: %v", deletedTodo)
 	w.WriteHeader(http.StatusOK)
+}
+
+func Update(mongoClient *mongo.Client, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut && r.Method != http.MethodPatch {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Obter o valor do parâmetro "id" da URL
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "Missing 'id' parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Converter o ID para o tipo ObjectID
+	objectID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		log.Printf("Invalid ID format: %v", err)
+		http.Error(w, "Invalid ID format", http.StatusBadRequest)
+		return
+	}
+
+	// Criar o filtro para localizar o documento
+	filter := bson.D{{Key: "_id", Value: objectID}}
+
+	var updateData models.Todo
+	if err := json.NewDecoder(r.Body).Decode(&updateData); err != nil {
+		log.Printf("Failed to decode request body: %v", err)
+		http.Error(w, "Failed to decode request body", http.StatusBadRequest)
+		return
+	}
+
+	update := bson.D{}
+
+	update = append(update, bson.E{Key: "completed", Value: updateData.Completed})
+
+	if updateData.Body != "" {
+		update = append(update, bson.E{Key: "body", Value: updateData.Body})
+	}
+
+	if len(update) == 0 {
+		http.Error(w, "No fields to update", http.StatusBadRequest)
+		return
+	}
+
+	updateCmd := bson.D{{Key: "$set", Value: update}}
+
+	updateResult, err := mongoClient.Database("react_go").Collection("Todos").UpdateOne(r.Context(), filter, updateCmd)
+
+	if err != nil {
+		log.Printf("Failed to update document: %v", err)
+		http.Error(w, "Failed to update document", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(updateResult); err != nil {
+		log.Printf("Failed to encode response: %v", err)
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
+
 }
